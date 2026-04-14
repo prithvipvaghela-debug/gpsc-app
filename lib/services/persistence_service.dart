@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'auto_save_service.dart';
+import 'undo_service.dart';
+import '../models/user_progress.dart';
 
 class QuizStats {
   final double lastScore;
@@ -143,13 +146,44 @@ class PersistenceService {
 
   Future<void> toggleBookmark(String id) async {
     final newSet = Set<String>.from(bookmarkedChapters.value);
+    bool isAdded = false;
     if (newSet.contains(id)) {
       newSet.remove(id);
     } else {
       newSet.add(id);
+      isAdded = true;
+    }
+    bookmarkedChapters.value = newSet;
+    
+    // 1. PUSH TO UNDO HISTORY
+    final existing = AutoSaveService().getProgress(id);
+    UndoService().pushAction(UndoAction(
+      id: id,
+      type: 'bookmark',
+      previousProgress: existing,
+    ));
+
+    // 2. Keep SharedPreferences for existing UI/Legacy
+    await _prefs.setStringList(_keyBookmarkedChapters, newSet.toList());
+
+    // 3. High-Performance Auto-Save (Hive)
+    AutoSaveService().saveProgress(
+      (existing ?? UserProgress(questionId: id)).copyWith(isBookmarked: isAdded)
+    );
+  }
+
+  /// Specialized revert for Undo
+  Future<void> revertBookmark(String id, bool? wasBookmarked) async {
+    final newSet = Set<String>.from(bookmarkedChapters.value);
+    if (wasBookmarked == true) {
+      newSet.add(id);
+    } else {
+      newSet.remove(id);
     }
     bookmarkedChapters.value = newSet;
     await _prefs.setStringList(_keyBookmarkedChapters, newSet.toList());
+    
+    // Hive is already updated by UndoService calling saveProgressNow
   }
 
   // --- Continue Learning ---

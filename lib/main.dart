@@ -14,6 +14,7 @@ import 'pages/search_page.dart';
 import 'pages/study_material_page.dart';
 import 'services/persistence_service.dart';
 import 'services/analytics_service.dart';
+import 'services/auto_save_service.dart';
 import 'theme.dart';
 import 'widgets/app_card.dart';
 import 'widgets/gpsc_page_scaffold.dart';
@@ -27,6 +28,7 @@ void main() async {
     MobileAds.instance.initialize();
   }
   await PersistenceService().init();
+  await AutoSaveService().init(); // Initialize High-Performance Auto-Save
   runApp(const GpscApp());
 }
 

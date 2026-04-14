@@ -5,9 +5,13 @@ import 'package:flutter/material.dart';
 
 import '../services/persistence_service.dart';
 import '../services/analytics_service.dart';
+import '../services/auto_save_service.dart';
+import '../services/undo_service.dart';
+import '../models/user_progress.dart';
 import '../widgets/gpsc_page_scaffold.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_option_button.dart';
+import '../widgets/undo_button.dart';
 
 class QuizQuestion {
   const QuizQuestion({
@@ -68,7 +72,63 @@ class _SimpleQuizPageState extends State<SimpleQuizPage> {
     _quizQuestions = _createShuffledQuestions(widget.questions);
     _selectedAnswers = List<int?>.filled(_quizQuestions.length, null);
     _loadStats();
+    _restoreProgress(); // Restore auto-saved state
     _startTimer();
+  }
+
+  void _handleUndo(UndoAction action) {
+    if (action.type == 'mcq' && action.metadata is int) {
+      final int index = action.metadata;
+      
+      setState(() {
+        // 1. Revert Score
+        final int? oldAnswer = action.previousProgress?.selectedAnswerIndex;
+        final int? currentAnswer = _selectedAnswers[index];
+        
+        // Remove current score contribution
+        if (currentAnswer != null) {
+          if (currentAnswer == _quizQuestions[index].correctAnswerIndex) {
+            _score -= _correctMark;
+          } else {
+            _score += _wrongMark;
+          }
+        }
+        
+        // Add previous score contribution if any
+        if (oldAnswer != null) {
+          if (oldAnswer == _quizQuestions[index].correctAnswerIndex) {
+            _score += _correctMark;
+          } else {
+            _score -= _wrongMark;
+          }
+        }
+
+        // 2. Revert answer state
+        _selectedAnswers[index] = oldAnswer;
+        if (index == _currentQuestionIndex) {
+          _selectedAnswerIndex = oldAnswer;
+        }
+      });
+    } else if (action.type == 'bookmark') {
+      PersistenceService().revertBookmark(
+        action.id, 
+        action.previousProgress?.isBookmarked
+      );
+    }
+  }
+
+  void _restoreProgress() {
+    for (int i = 0; i < _quizQuestions.length; i++) {
+      final String questionKey = '${widget.quizId ?? widget.title}_${_quizQuestions[i].question}';
+      final savedProgress = AutoSaveService().getProgress(questionKey);
+      if (savedProgress != null && savedProgress.isAttempted) {
+        _selectedAnswers[i] = savedProgress.selectedAnswerIndex;
+        // If it's the current question and we just restored it, we need to show the selection
+        if (i == _currentQuestionIndex) {
+          _selectedAnswerIndex = savedProgress.selectedAnswerIndex;
+        }
+      }
+    }
   }
   
   void _loadStats() {
@@ -132,7 +192,24 @@ class _SimpleQuizPageState extends State<SimpleQuizPage> {
         _score -= _wrongMark;
       }
 
-      // Track per-question result for weakness detection
+      // 1. PUSH TO UNDO HISTORY
+      final String questionKey = '${widget.quizId ?? widget.title}_${_currentQuestion.question}';
+      final previousState = AutoSaveService().getProgress(questionKey);
+      UndoService().pushAction(UndoAction(
+        id: questionKey,
+        type: 'mcq',
+        previousProgress: previousState,
+        metadata: _currentQuestionIndex, // Store which question index to refresh on undo
+      ));
+
+      // 2. HIGH-PERFORMANCE AUTO-SAVE
+      AutoSaveService().saveProgress(UserProgress(
+        questionId: questionKey,
+        selectedAnswerIndex: index,
+        isAttempted: true,
+      ));
+
+      // 2. ANALYTICS
       AnalyticsService().recordQuestionResult(
         topic: widget.quizId ?? widget.title,
         isCorrect: isCorrect,
@@ -234,6 +311,9 @@ class _SimpleQuizPageState extends State<SimpleQuizPage> {
   Widget build(BuildContext context) {
     return GpscPageScaffold(
       title: widget.title,
+      actions: [
+        UndoButton(onUndo: _handleUndo),
+      ],
       child: _buildQuestionView(context),
     );
   }

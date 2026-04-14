@@ -12,6 +12,7 @@ class GpscPageScaffold extends StatelessWidget {
     this.maxWidth = 420,
     this.showHomeAction = false,
     this.drawer,
+    this.actions,
   });
 
   final String title;
@@ -19,6 +20,7 @@ class GpscPageScaffold extends StatelessWidget {
   final double maxWidth;
   final bool showHomeAction;
   final Widget? drawer;
+  final List<Widget>? actions;
 
   @override
   Widget build(BuildContext context) {
@@ -76,7 +78,11 @@ class GpscPageScaffold extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
+          if (actions != null) ...[
+            ...actions!,
+            const SizedBox(width: 8),
+          ],
           const ThemeToggleButton(),
         ],
       ),
