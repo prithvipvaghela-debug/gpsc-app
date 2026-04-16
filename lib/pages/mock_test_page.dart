@@ -27,8 +27,46 @@ class MockTestPage extends StatelessWidget {
           ),
           const SizedBox(height: 32),
           const SectionTitle(
-            title: 'Test Types',
-            subtitle: 'Choose a mode that fits your current study goals.',
+            title: 'Exam Mode',
+            subtitle: 'Real-time countdown, question palette, and marking.',
+          ),
+          SectionItemCard(
+            title: 'Full Length Exam',
+            subtitle: '100 Questions • 60 Minutes • All Subjects',
+            icon: Icons.timer_rounded,
+            isPrimary: true,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const FullLengthTestPage(
+                    title: 'Full Length Mock Exam',
+                    examId: 'full_exam_mode_1',
+                    isUniversal: true,
+                    durationMinutes: 60,
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          SectionItemCard(
+            title: 'Subject Wise Exam',
+            subtitle: '50 Questions • 30 Minutes • Targeted Practice',
+            icon: Icons.fact_check_rounded,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SubjectWiseTestPage(isExamMode: true),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 32),
+          const SectionTitle(
+            title: 'Practice Mode',
+            subtitle: 'Instant feedback after each question.',
           ),
           SectionItemCard(
             title: 'GPSC Full Mock Exam',

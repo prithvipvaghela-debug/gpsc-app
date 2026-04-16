@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../widgets/app_banner_ad.dart';
+import '../models/quiz_question.dart';
 import 'simple_quiz_page.dart';
+
+export '../models/quiz_question.dart';
 
 String _formatScore(double score) {
   if (score % 1 == 0) {
@@ -16,12 +19,14 @@ class ResultPage extends StatelessWidget {
     required this.questions,
     required this.selectedAnswers,
     required this.score,
+    this.quizId,
   });
 
   final String title;
   final List<QuizQuestion> questions;
   final List<int?> selectedAnswers;
   final double score;
+  final String? quizId;
 
   @override
   Widget build(BuildContext context) {
@@ -207,7 +212,11 @@ class ResultPage extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                       builder: (context) =>
-                          SimpleQuizPage(title: title, questions: questions)),
+                          SimpleQuizPage(
+                            title: title, 
+                            questions: questions,
+                            quizId: quizId,
+                          )),
                 );
               },
               icon: const Icon(Icons.replay_rounded),

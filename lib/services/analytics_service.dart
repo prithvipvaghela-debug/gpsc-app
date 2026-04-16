@@ -1,130 +1,181 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Senior Data Engineer Exam Analytics Service
+/// Advanced tracking of user performance, trends, and weak areas.
 class AnalyticsService {
-  static const String _keyTotalTests = 'total_tests';
-  static const String _keyTotalCorrect = 'total_correct';
-  static const String _keyTotalWrong = 'total_wrong';
-  static const String _keyTopicStats = 'topic_performance_stats';
+  static final AnalyticsService _instance = AnalyticsService._internal();
+  factory AnalyticsService() => _instance;
+  AnalyticsService._internal();
 
-  static const List<String> subjects = ['Economy', 'Science & Tech', 'Environment', 'History', 'General'];
+  // Keys
+  static const String _keyTotalTests = 'total_tests_v2';
+  static const String _keyGlobalCorrect = 'global_correct_v2';
+  static const String _keyGlobalWrong = 'global_wrong_v2';
+  static const String _keyTopicStats = 'topic_performance_stats_v2';
+  static const String _keyHistory = 'test_history_v2'; // Stores list of recent scores
+  static const String _keyTotalTimeSeconds = 'total_time_spent_v2';
 
-  Future<void> saveTestResult(String subject, int correct, int wrong) async {
+  /// Enhanced: Records a full test result with history tracking
+  Future<void> saveTestResult(String title, int correct, int wrong, {int? durationSeconds}) async {
     final prefs = await SharedPreferences.getInstance();
     
-    // Global stats
-    int totalTests = prefs.getInt(_keyTotalTests) ?? 0;
-    int totalCorrect = prefs.getInt(_keyTotalCorrect) ?? 0;
-    int totalWrong = prefs.getInt(_keyTotalWrong) ?? 0;
+    // 1. Update Global Counters
+    final int totalTests = (prefs.getInt(_keyTotalTests) ?? 0) + 1;
+    final int totalCorrect = (prefs.getInt(_keyGlobalCorrect) ?? 0) + correct;
+    final int totalWrong = (prefs.getInt(_keyGlobalWrong) ?? 0) + wrong;
+    
+    await prefs.setInt(_keyTotalTests, totalTests);
+    await prefs.setInt(_keyGlobalCorrect, totalCorrect);
+    await prefs.setInt(_keyGlobalWrong, totalWrong);
 
-    await prefs.setInt(_keyTotalTests, totalTests + 1);
-    await prefs.setInt(_keyTotalCorrect, totalCorrect + correct);
-    await prefs.setInt(_keyTotalWrong, totalWrong + wrong);
+    if (durationSeconds != null) {
+      final int totalTime = (prefs.getInt(_keyTotalTimeSeconds) ?? 0) + durationSeconds;
+      await prefs.setInt(_keyTotalTimeSeconds, totalTime);
+    }
 
-    // Subject-wise stats
-    final String subjectKey = subject.toLowerCase().replaceAll(' ', '_');
-    int subjectCorrect = prefs.getInt('${subjectKey}_correct') ?? 0;
-    int subjectWrong = prefs.getInt('${subjectKey}_wrong') ?? 0;
-
-    await prefs.setInt('${subjectKey}_correct', subjectCorrect + correct);
-    await prefs.setInt('${subjectKey}_wrong', subjectWrong + wrong);
+    // 2. Performance Trend (Last 10 Tests)
+    final double accuracy = (correct + wrong > 0) ? (correct / (correct + wrong)) * 100 : 0;
+    List<String> history = prefs.getStringList(_keyHistory) ?? [];
+    
+    Map<String, dynamic> entry = {
+      'title': title,
+      'correct': correct,
+      'wrong': wrong,
+      'accuracy': accuracy.toStringAsFixed(1),
+      'date': DateTime.now().toIso8601String(),
+    };
+    
+    history.insert(0, json.encode(entry));
+    if (history.length > 10) history = history.sublist(0, 10);
+    
+    await prefs.setStringList(_keyHistory, history);
+    developer.log('Analytics: Saved test result for $title', name: 'Analytics');
   }
 
+  /// Enhanced: Granular topic tracking
   Future<void> recordQuestionResult({
     required String topic,
     required bool isCorrect,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+    final String topicKey = topic.toLowerCase().trim().replaceAll(' ', '_');
+    
     final String? dataString = prefs.getString(_keyTopicStats);
-    Map<String, dynamic> data = {};
+    Map<String, dynamic> data = dataString != null ? json.decode(dataString) : {};
 
-    if (dataString != null) {
-      data = Map<String, dynamic>.from(json.decode(dataString));
+    if (!data.containsKey(topicKey)) {
+      data[topicKey] = {'correct': 0, 'wrong': 0, 'total': 0};
     }
 
-    if (!data.containsKey(topic)) {
-      data[topic] = {'correct': 0, 'wrong': 0};
-    }
-
-    Map<String, dynamic> stats = Map<String, dynamic>.from(data[topic]);
+    Map<String, dynamic> stats = Map<String, dynamic>.from(data[topicKey]);
+    stats['total'] = (stats['total'] as int) + 1;
     if (isCorrect) {
       stats['correct'] = (stats['correct'] as int) + 1;
     } else {
       stats['wrong'] = (stats['wrong'] as int) + 1;
     }
     
-    data[topic] = stats;
+    data[topicKey] = stats;
     await prefs.setString(_keyTopicStats, json.encode(data));
   }
 
+  /// Weak Topic Detection (Accuracy < 60%)
   Future<List<Map<String, dynamic>>> getWeakTopics() async {
     final prefs = await SharedPreferences.getInstance();
     final String? dataString = prefs.getString(_keyTopicStats);
     if (dataString == null) return [];
 
-    Map<String, dynamic> data = Map<String, dynamic>.from(json.decode(dataString));
-    List<Map<String, dynamic>> weakTopicsList = [];
+    Map<String, dynamic> data = json.decode(dataString);
+    List<Map<String, dynamic>> results = [];
 
-    data.forEach((topic, stats) {
-      final Map<String, dynamic> topicStats = Map<String, dynamic>.from(stats);
-      final int correct = topicStats['correct'] as int;
-      final int wrong = topicStats['wrong'] as int;
-      final int total = correct + wrong;
-
-      if (total > 0) {
+    data.forEach((topicKey, stats) {
+      final int correct = stats['correct'] ?? 0;
+      final int total = stats['total'] ?? 0;
+      
+      if (total >= 5) { // Only suggest after enough attempts
         final double accuracy = (correct / total) * 100;
-        if (accuracy < 70) {
-          weakTopicsList.add({
-            'topic': topic,
+        if (accuracy < 60) {
+          results.add({
+            'topic': topicKey.replaceAll('_', ' ').toUpperCase(),
             'accuracy': accuracy,
-            'wrongCount': wrong,
+            'total': total,
+            'correct': correct,
+            'wrong': stats['wrong'] ?? 0,
           });
         }
       }
     });
 
-    // Sort by highest wrong count or lowest accuracy
-    weakTopicsList.sort((a, b) => (a['accuracy'] as double).compareTo(b['accuracy'] as double));
-
-    return weakTopicsList;
+    results.sort((a, b) => (a['accuracy'] as double).compareTo(b['accuracy'] as double));
+    return results;
   }
 
-  Future<List<String>> getStudyRecommendations() async {
+  /// Smart Recommendation Engine
+  Future<List<String>> getRecommendations() async {
     final weakTopics = await getWeakTopics();
-    final List<String> recommendations = [];
+    if (weakTopics.isEmpty) return ["Excellent work! Keep maintaining your current practice pace."];
 
+    final List<String> recs = [];
     for (int i = 0; i < weakTopics.length && i < 3; i++) {
-      final String topic = weakTopics[i]['topic'].toString().replaceAll('_', ' ');
+      final topic = weakTopics[i]['topic'];
+      final accuracy = (weakTopics[i]['accuracy'] as double).toStringAsFixed(0);
+      
       if (i == 0) {
-        recommendations.add("Revise $topic thoroughly to improve concepts.");
-      } else if (i == 1) {
-        recommendations.add("Practice more MCQs for $topic to gain confidence.");
+        recs.add("URGENT: Your accuracy in $topic is only $accuracy%. Focus 70% of your study time here.");
       } else {
-        recommendations.add("Focus on improving accuracy in $topic.");
+        recs.add("Consider re-practicing foundational concepts of $topic.");
       }
     }
-
-    return recommendations;
+    return recs;
   }
 
-  Future<Map<String, dynamic>> getStats() async {
+  /// Comprehensive Dashboard Data
+  Future<Map<String, dynamic>> getDashboardData() async {
     final prefs = await SharedPreferences.getInstance();
     
-    Map<String, dynamic> subjectsStats = {};
-
-    for (String subject in subjects) {
-      final String subjectKey = subject.toLowerCase().replaceAll(' ', '_');
-      subjectsStats[subject] = {
-        'correct': prefs.getInt('${subjectKey}_correct') ?? 0,
-        'wrong': prefs.getInt('${subjectKey}_wrong') ?? 0,
-      };
-    }
+    final int totalTests = prefs.getInt(_keyTotalTests) ?? 0;
+    final int totalCorrect = prefs.getInt(_keyGlobalCorrect) ?? 0;
+    final int totalWrong = prefs.getInt(_keyGlobalWrong) ?? 0;
+    final int totalAttempts = totalCorrect + totalWrong;
+    final double globalAccuracy = totalAttempts > 0 ? (totalCorrect / totalAttempts) * 100 : 0;
+    
+    // Topic Wise Accuracy
+    final String? dataString = prefs.getString(_keyTopicStats);
+    Map<String, dynamic> topicData = dataString != null ? json.decode(dataString) : {};
+    
+    // History
+    final List<String> historyStrings = prefs.getStringList(_keyHistory) ?? [];
+    final List<Map<String, dynamic>> history = historyStrings
+        .map((s) => Map<String, dynamic>.from(json.decode(s)))
+        .toList();
 
     return {
-      'tests': prefs.getInt(_keyTotalTests) ?? 0,
-      'correct': prefs.getInt(_keyTotalCorrect) ?? 0,
-      'wrong': prefs.getInt(_keyTotalWrong) ?? 0,
-      'subjects': subjectsStats,
+      'totalTests': totalTests,
+      'totalCorrect': totalCorrect,
+      'totalWrong': totalWrong,
+      'totalAttempts': totalAttempts,
+      'globalAccuracy': globalAccuracy,
+      'history': history,
+      'topics': topicData,
+      'avgTimePerQuestion': totalAttempts > 0 ? (prefs.getInt(_keyTotalTimeSeconds) ?? 0) / totalAttempts : 0,
+    };
+  }
+
+  /// Legacy Compatibility: Study Recommendations
+  Future<List<String>> getStudyRecommendations() async {
+    return getRecommendations();
+  }
+
+  /// Legacy Compatibility: Stats
+  Future<Map<String, dynamic>> getStats() async {
+    final data = await getDashboardData();
+    return {
+      'tests': data['totalTests'],
+      'correct': data['totalCorrect'],
+      'wrong': data['totalWrong'],
+      'subjects': data['topics'], // Map of topic stats
     };
   }
 }

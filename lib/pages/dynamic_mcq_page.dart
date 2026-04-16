@@ -6,10 +6,12 @@ import 'package:flutter/material.dart';
 import '../services/persistence_service.dart';
 import '../services/analytics_service.dart';
 import '../services/mcq_loader.dart';
+import '../models/quiz_question.dart';
 import '../widgets/gpsc_page_scaffold.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_option_button.dart';
-import 'simple_quiz_page.dart'; // Import for ResultPage and QuizQuestion
+import 'simple_quiz_page.dart';
+import 'result_page_new.dart';
 
 class DynamicMCQPage extends StatefulWidget {
   const DynamicMCQPage({

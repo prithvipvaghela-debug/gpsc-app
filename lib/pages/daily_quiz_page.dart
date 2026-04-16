@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import '../models/quiz_question.dart';
 import 'simple_quiz_page.dart';
 
 class DailyQuizPage extends StatelessWidget {
